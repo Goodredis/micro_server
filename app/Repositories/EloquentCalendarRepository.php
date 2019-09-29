@@ -70,6 +70,31 @@ class EloquentCalendarRepository extends AbstractEloquentRepository implements C
     }
 
     /**
+     * @brief 调用api更新假期、调休数据
+     *
+     * @param end start (time), comment, type
+     * @retval array
+     */
+    public function adjustCalendar($data)
+    {
+        // 先把国家假期全部清空
+        $this->model->where([['type', '=', 'festival'], ['day', '<>', 6], ['day', '<>', 7]])->update(['type' => 'workday']);
+        foreach ($data['holiday'] as $key => $val) {
+            $time = strtotime($val['date']);
+            if (mb_substr($val['name'], -2, 2, 'UTF-8') == '调休') {
+                $type = 'specialDay';
+                $comment = $val['name'];
+            } else {
+                $type = 'festival';
+                $comment='';
+            }
+            $this->model->where('time', '=', $time)->update(['type' => $type, 'comment' => $comment]);
+        }
+
+        return $this->getObjectCalendar('public', $data['year']);
+    }
+
+    /**
      * @brief 初始化一年的日期到数据库
      *
      * @param $year int 年份1980到2038

@@ -39,5 +39,7 @@ $api->version('v1', [
     // 批量 操作
     $api->post('calendar/batch', 'CalendarController@batch');
     $api->resources(['calendar' => 'CalendarController']);
+    // 调用api生成日历
+    $api->post('calendar/createapi', 'CalendarController@createapi');
 
 });

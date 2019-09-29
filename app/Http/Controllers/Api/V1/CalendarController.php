@@ -13,6 +13,7 @@ use App\Models\Calendar;
 use App\Repositories\Contracts\CalendarRepository;
 use App\Transformers\CalendarTransformer;
 use Illuminate\Http\Request;
+use Ixudra\Curl\Facades\Curl;
 use League\Fractal\Resource\Collection;
 
 class CalendarController extends Controller
@@ -27,6 +28,7 @@ class CalendarController extends Controller
         parent::__construct();
     }
 
+    // 获取年份的日历
     public function index(Request $request)
     {
         $res = $this->calendarRepository->findBy($request->all());
@@ -34,6 +36,7 @@ class CalendarController extends Controller
         return $this->respondWithCollection($res, $this->calendarTransform);
     }
 
+    // 单年日历生成
     public function store(Request $request)
     {
         // 检查参数是否合法
@@ -48,6 +51,7 @@ class CalendarController extends Controller
         return isset($calendar['err_code']) ? $this->setStatusCode(409)->respondWithArray($calendar) : $this->setStatusCode(201)->respondWithCollection($calendar, $this->calendarTransform);
     }
 
+    // 修改日期类型（单日）
     public function update(Request $request, $dayId)
     {
         // 检查参数是否合法
@@ -67,6 +71,7 @@ class CalendarController extends Controller
         return $this->respondWithItem($day, $this->calendarTransform);
     }
 
+    // 批量 新建 年份日历 更改日期类型
     public function batch(Request $request)
     {
         // 检查参数是否合法
@@ -82,16 +87,72 @@ class CalendarController extends Controller
                 }
                 break;
             case 'update':
+                // 检查参数是否合法
+                $validatorResponse = $this->batchUpdateValidation($request->input('data'));
+                // 返回参数不合法错误
+                if (isset($validatorResponse['err_code'])) {
+                    return $this->setStatusCode(400)->respondWithArray($validatorResponse);
+                }
                 $calendar = $this->calendarRepository->batchUpdate($request->input('data'));
                 break;
         }
         return isset($calendar['err_code']) ? $this->setStatusCode(409)->respondWithArray($calendar) : $this->setStatusCode(201)->respondWithCollection($calendar, $this->calendarTransform);
     }
 
+    // 调用api生成日历 （目前只支持单年）
+    public function createapi(Request $request)
+    {
+        // 检查参数是否合法
+        $validatorResponse = $this->validateRequest($request, $this->createRequestValidationRules());
+        // 返回参数不合法错误
+        if ($validatorResponse !== true) {
+            return $this->sendInvalidFieldResponse($validatorResponse);
+        }
+        // 先自动生成
+        if (empty($request->input('holiday'))) {
+            $this->calendarRepository->initOneYearDate($request->input('year'));
+        }
+        $url = config('calendar.apiUrl').$request->input('year');
+
+        $response = Curl::to($url)
+            ->withOption('RETURNTRANSFER', 1)
+            ->withOption('PROXY', config('system.proxy'))
+            ->withOption('PROXYPORT', config('system.proxyPort'))
+            ->withData('')
+            ->withHeaders([])
+            ->get();
+        $response = json_decode($response, true);
+        if ($response['code'] != 0 || empty($response['holiday'])) {
+            $this->setStatusCode(500)->respondWithArray(array('err_code' => 1001, 'err_memo' => 'api返回错误'));
+        }
+        $response['year'] = $request->input('year');
+        $calendar =  $this->calendarRepository->adjustCalendar($response); // 替换假期
+        return isset($calendar['err_code']) ? $this->setStatusCode(409)->respondWithArray($calendar) : $this->setStatusCode(201)->respondWithCollection($calendar, $this->calendarTransform);
+    }
+
+    // 单年日历新建规则
     private function storeRequestValidationRules()
     {
         $rules = [
             'year'                  => 'required'
+        ];
+
+        return $rules;
+    }
+
+    // 单年日历新建规则
+    private function batchUpdateValidation($data)
+    {
+        $res = empty($data['end']) || empty($data['start']) || empty($data['type'])   ? array('err_code' => 1000, 'err_memo' => '参数错误') : true;
+
+        return $res;
+    }
+
+    // api 生成日历参数规则
+    private function createRequestValidationRules()
+    {
+        $rules = [
+            'year'                  => 'required|digits:4'
         ];
 
         return $rules;
@@ -128,6 +189,7 @@ class CalendarController extends Controller
         return $rules;
     }
 
+    // 集合数据返回整理
     public function respondWithCollection($collection, $callback)
     {
         $collection = collect($collection);

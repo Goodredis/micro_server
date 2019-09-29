@@ -28,6 +28,10 @@ $app = new Laravel\Lumen\Application(
 $app->withFacades();
 
 $app->withEloquent();
+class_alias('Ixudra\Curl\Facades\Curl', 'Curl');
+
+// load system configurations
+$app->configure('system');
 
 // load cors configurations
 $app->configure('cors');
@@ -106,6 +110,7 @@ $app->register(\Illuminate\Mail\MailServiceProvider::class);
 
 $app->register(Dingo\Api\Provider\LumenServiceProvider::class);
 $app->register(App\Providers\DingoServiceProvider::class);
+$app->register(Ixudra\Curl\CurlServiceProvider::class);
 
 $app->register(Tymon\JWTAuth\Providers\LumenServiceProvider::class);
 
